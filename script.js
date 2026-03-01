@@ -146,7 +146,6 @@ function loadDetail(w) {
   chatHistMap = {};
   easterEggActive = {};
   buildChatTabs(w);
-  setTimeout(updateGameBtns, 50);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -592,151 +591,42 @@ if (isHomePage && !isWorldPage) {
   }
 }
 /* ══════════════════════════════════════════════════════════
-   GALLERY — 错落展示 + 瀑布流弹窗
+   GALLERY — 自动选图预览 + 瀑布流弹窗
 ══════════════════════════════════════════════════════════ */
 
-/**
- * 获取图片真实宽高比
- * 返回 Promise<{src, ratio}[]>，ratio > 1 为横图，< 1 为竖图
- */
+/* 加载一批图片的真实宽高比 */
 function loadImageRatios(srcs) {
   return Promise.all(srcs.map(src => new Promise(resolve => {
     const img = new Image();
     img.onload  = () => resolve({ src, ratio: img.naturalWidth / img.naturalHeight });
-    img.onerror = () => resolve({ src, ratio: 1 }); // 加载失败默认1:1
+    img.onerror = () => resolve({ src, ratio: 1 });
     img.src = src;
   })));
 }
 
-/**
- * 根据图片比例和数量，生成错落布局方案
- * 返回每张图的 { gridColumn, gridRow, aspectRatio } 对象
- */
-function calcLayout(items) {
-  const n = items.length;
-  if (n === 0) return [];
-
-  // 辅助：判断是否横图
-  const isLandscape = r => r >= 1.2;
-  const isPortrait  = r => r < 0.85;
-
-  if (n === 1) {
-    return [{ gridColumn: '1 / -1', gridRow: '1', aspectRatio: Math.min(items[0].ratio, 2.2) }];
-  }
-
-  if (n === 2) {
-    // 两张都是竖图 → 并排；否则上下
-    if (isPortrait(items[0].ratio) && isPortrait(items[1].ratio)) {
-      return [
-        { gridColumn: '1 / 2', gridRow: '1', aspectRatio: items[0].ratio },
-        { gridColumn: '2 / 3', gridRow: '1', aspectRatio: items[1].ratio },
-      ];
-    }
-    return [
-      { gridColumn: '1 / -1', gridRow: '1', aspectRatio: Math.min(items[0].ratio, 2) },
-      { gridColumn: '1 / -1', gridRow: '2', aspectRatio: Math.min(items[1].ratio, 2) },
-    ];
-  }
-
-  if (n === 3) {
-    // 第一张横图大 + 右侧两张竖图叠
-    if (isLandscape(items[0].ratio)) {
-      return [
-        { gridColumn: '1 / 3', gridRow: '1 / 3', aspectRatio: items[0].ratio },
-        { gridColumn: '3 / 4', gridRow: '1',      aspectRatio: items[1].ratio },
-        { gridColumn: '3 / 4', gridRow: '2',      aspectRatio: items[2].ratio },
-      ];
-    }
-    // 第一张竖图左 + 右侧两张
-    return [
-      { gridColumn: '1 / 2', gridRow: '1 / 3', aspectRatio: items[0].ratio },
-      { gridColumn: '2 / 4', gridRow: '1',      aspectRatio: items[1].ratio },
-      { gridColumn: '2 / 4', gridRow: '2',      aspectRatio: items[2].ratio },
-    ];
-  }
-
-  if (n === 4) {
-    // 找最横的那张放大
-    const maxIdx = items.reduce((mi, it, i) => it.ratio > items[mi].ratio ? i : mi, 0);
-    if (maxIdx === 0) {
-      return [
-        { gridColumn: '1 / 3', gridRow: '1',      aspectRatio: items[0].ratio },
-        { gridColumn: '3 / 4', gridRow: '1',      aspectRatio: items[1].ratio },
-        { gridColumn: '1 / 2', gridRow: '2',      aspectRatio: items[2].ratio },
-        { gridColumn: '2 / 4', gridRow: '2',      aspectRatio: items[3].ratio },
-      ];
-    }
-    return [
-      { gridColumn: '1 / 2', gridRow: '1',      aspectRatio: items[0].ratio },
-      { gridColumn: '2 / 4', gridRow: '1',      aspectRatio: items[1].ratio },
-      { gridColumn: '1 / 3', gridRow: '2',      aspectRatio: items[2].ratio },
-      { gridColumn: '3 / 4', gridRow: '2',      aspectRatio: items[3].ratio },
-    ];
-  }
-
-  // 5张：经典杂志布局
-  // 找最横的放左大位，找最竖的放右竖位
-  const sorted = [...items.map((it,i)=>({...it,i}))];
-  const bigIdx     = sorted.reduce((mi,it) => it.ratio > sorted[mi].ratio ? it.i : mi, 0);
-  const thinIdx    = sorted.reduce((mi,it) => it.ratio < sorted[mi].ratio ? it.i : mi, 0);
-
-  const layout = Array(5).fill(null);
-  // 大横图占左侧两列两行
-  layout[bigIdx]  = { gridColumn: '1 / 3', gridRow: '1 / 3', aspectRatio: items[bigIdx].ratio };
-  // 最竖图占右侧竖列两行
-  layout[thinIdx] = { gridColumn: '3 / 4', gridRow: '1 / 3', aspectRatio: items[thinIdx].ratio };
-  // 剩余3张填下方
-  let col = 1;
-  items.forEach((_, i) => {
-    if (i === bigIdx || i === thinIdx) return;
-    layout[i] = { gridColumn: `${col} / ${col+1}`, gridRow: '3', aspectRatio: items[i].ratio };
-    col++;
-  });
-  return layout;
-}
-
-/**
- * 从所有图片中自动挑选最佳展示组合（最多5张）
- * 算法目标：让预览区尽量多样——有横图、有竖图、比例丰富
- *
- * 策略：
- * 1. 加载全部图片宽高比
- * 2. 按比例分桶：横图(ratio≥1.3) / 方图(0.8~1.3) / 竖图(<0.8)
- * 3. 从各桶优先抽取，保证多样性
- * 4. 每次 gallery 数组变化（图片数量不同）都重新执行
- */
-function pickBestPreview(items) {
-  if (items.length <= 5) return items;
-
-  const landscape = items.filter(it => it.ratio >= 1.3);
+/* 从所有图片挑最多6张：均衡横/竖/方，保证多样性 */
+function pickBestPreview(items, max = 6) {
+  if (items.length <= max) return items;
+  const landscape = items.filter(it => it.ratio >= 1.25);
   const portrait  = items.filter(it => it.ratio < 0.8);
-  const square    = items.filter(it => it.ratio >= 0.8 && it.ratio < 1.3);
-
-  const picked = [];
-  const used   = new Set();
-
-  const take = (pool, n) => {
+  const square    = items.filter(it => it.ratio >= 0.8 && it.ratio < 1.25);
+  const picked = [], used = new Set();
+  const take = (pool, limit) => {
     for (const it of pool) {
-      if (picked.length >= n) break;
+      if (picked.length >= limit || picked.length >= max) break;
       if (!used.has(it.src)) { picked.push(it); used.add(it.src); }
     }
   };
-
-  // 理想：2横 + 2竖 + 1方，根据实际库存灵活补足
-  take(landscape, 2);
-  take(portrait,  2);
-  take(square,    1);
-
-  // 若不足5张，从剩余图里补
-  const rest = items.filter(it => !used.has(it.src));
-  take(rest, 5);
-
+  take(landscape, 2); take(portrait, 2); take(square, 2);
+  take(items.filter(it => !used.has(it.src)), max);
   return picked;
 }
 
+/* 构建预览画廊：2列瀑布流，图片保持原始比例 */
 function buildGalleryPreview(w) {
   const galEl = document.getElementById('d-gallery');
   const btnEl = document.getElementById('gal-more-btn');
+  if (!galEl) return;
   galEl.innerHTML = '';
 
   const allImgs = (w.gallery || []).filter(Boolean);
@@ -748,51 +638,45 @@ function buildGalleryPreview(w) {
   }
 
   if (allImgs.length === 0) {
-    galEl.style.gridTemplateColumns = 'repeat(3,1fr)';
     for (let i = 0; i < 3; i++) {
       const item = document.createElement('div');
       item.className = 'gi';
-      item.style.aspectRatio = '3/4';
       item.innerHTML = `<div class="gi-empty"><div class="ge">⊹</div><div class="gt">IMAGE</div></div>`;
       galEl.appendChild(item);
     }
     return;
   }
 
-  // 淡出占位
   galEl.style.opacity = '0';
-  galEl.style.transition = 'opacity .4s';
+  galEl.style.transition = 'opacity .5s';
 
-  // 加载全部图片的宽高比，再从中挑选最佳5张
   loadImageRatios(allImgs).then(allItems => {
-    const preview = pickBestPreview(allItems);
-    const layout  = calcLayout(preview);
-
+    const preview = pickBestPreview(allItems, 6);
     galEl.innerHTML = '';
-    galEl.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    galEl.style.gridAutoRows = '160px';
 
-    preview.forEach((it, i) => {
-      const lyt  = layout[i];
+    preview.forEach(it => {
       const item = document.createElement('div');
       item.className = 'gi';
-      item.style.gridColumn = lyt.gridColumn;
-      item.style.gridRow    = lyt.gridRow;
-
       const img = document.createElement('img');
-      img.src     = it.src;
-      img.alt     = '';
-      img.loading = 'lazy';
+      img.src = it.src; img.alt = ''; img.loading = 'lazy';
       item.appendChild(img);
       item.onclick = () => lbOpen(it.src);
       galEl.appendChild(item);
     });
 
-    galEl.style.opacity = '1';
+    // 等图片加载完淡入
+    let loaded = 0;
+    const imgs = galEl.querySelectorAll('img');
+    const onLoad = () => { if (++loaded >= imgs.length) galEl.style.opacity = '1'; };
+    imgs.forEach(img => {
+      if (img.complete) onLoad();
+      else { img.addEventListener('load', onLoad); img.addEventListener('error', onLoad); }
+    });
+    if (!imgs.length) galEl.style.opacity = '1';
   });
 }
 
-/* ── 画廊弹窗 ── */
+/* 画廊全屏弹窗 */
 function galModalOpen() {
   if (!curWorld) return;
   const modal   = document.getElementById('gal-modal');
@@ -805,15 +689,13 @@ function galModalOpen() {
 
   const imgs = (curWorld.gallery || []).filter(Boolean);
   if (imgs.length === 0) {
-    masonry.innerHTML = '<p style="color:#333;font-family:\'Space Mono\',monospace;font-size:.6rem;letter-spacing:.12em;text-align:center;padding:40px">NO IMAGES YET</p>';
+    masonry.innerHTML = `<p style="color:#333;font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:.12em;text-align:center;padding:60px 0">NO IMAGES YET</p>`;
   } else {
     imgs.forEach(src => {
       const item = document.createElement('div');
       item.className = 'gal-masonry-item';
       const img = document.createElement('img');
-      img.src     = src;
-      img.alt     = '';
-      img.loading = 'lazy';
+      img.src = src; img.alt = ''; img.loading = 'lazy';
       item.appendChild(img);
       item.onclick = () => lbOpen(src);
       masonry.appendChild(item);
@@ -830,465 +712,9 @@ function galModalClose() {
   document.body.style.overflow = '';
 }
 
-// ESC 关闭画廊弹窗
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const modal = document.getElementById('gal-modal');
-    if (modal && modal.classList.contains('op')) { galModalClose(); return; }
+    if (modal?.classList.contains('op')) { galModalClose(); return; }
   }
 });
-
-/* ══════════════════════════════════════════════════════════
-   21点游戏 — 标准规则（分牌/双倍/保险）
-══════════════════════════════════════════════════════════ */
-
-/* ── 台词库 ── */
-const BJ_LINES = {
-  0: { // 悠葉（冷淡）
-    idle:    ['……随便坐。', '要玩就认真点。', '……'],
-    deal:    ['发牌了。', '……看好。', '开始吧。'],
-    hit:     ['……还要？', '自己想清楚。', '随便。'],
-    stand:   ['停了？', '看你的。', '……嗯。'],
-    double:  ['……胆子不小。', '赌注翻倍。'],
-    split:   ['分牌。', '……分开打吧。'],
-    insure:  ['……保险？', '谨慎。'],
-    bust:    ['爆了。', '……差一点。', '想太多了。'],
-    win:     ['……赢了。', '运气不错。', '这次算你的。'],
-    lose:    ['输了。', '……再来。', '差了点。'],
-    push:    ['平局。', '……重来。'],
-    bjack:   ['21点。', '……运气好。', '不错。'],
-  },
-  1: { // 乱数（活泼）
-    idle:    ['来来来♡', '嘿嘿～准备输了吗', '乱数不手软哦～'],
-    deal:    ['开始啦♡', '嘿嘿看好了哦！', '这次乱数赢定了♡'],
-    hit:     ['哇还要！', '胆子够大嘛～', '好好好～'],
-    stand:   ['哎不要了啊？', '怂了～', '好吧好吧！'],
-    double:  ['哇双倍！！♡', '这么有信心吗～'],
-    split:   ['分开打！！', '嘿嘿这样更有趣♡'],
-    insure:  ['买保险啊！', '这么怂的吗～'],
-    bust:    ['爆啦爆啦！哈哈～', '太贪心啦♡', '哎呀～'],
-    win:     ['咦赢了！厉害嘛♡', '下次乱数赢回来！', '……算你的。'],
-    lose:    ['嘿嘿乱数赢啦♡', '再来再来！', '输啦～'],
-    push:    ['平局！？重来！！', '不算不算♡'],
-    bjack:   ['哇——！！21点！！♡', '你作弊了吧！！'],
-  },
-};
-
-function bjLine(charIdx, key) {
-  const pool = BJ_LINES[charIdx]?.[key] ?? BJ_LINES[0].idle;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-function bjSay(key) {
-  const el = document.getElementById('bj-speech-text');
-  if (el) el.textContent = bjLine(BJ.charIdx, key);
-}
-
-/* ── 状态 ── */
-const BJ = {
-  charIdx: 0,
-  deck: [],
-  player: [],   // [{suit,val}]
-  playerSplit: null,  // 分牌后第二手
-  dealer: [],
-  chips: 1000,
-  bet: 0,
-  insureBet: 0,
-  phase: 'bet',   // bet | play | splitPlay | over
-  activeHand: 'player',  // player | split
-  insured: false,
-};
-
-const BJ_SUITS = ['♠','♣','♥','♦'];
-const BJ_VALS  = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-const BJ_RED   = new Set(['♥','♦']);
-
-function bjMakeDeck(decks = 6) {
-  const d = [];
-  for (let n = 0; n < decks; n++)
-    for (const s of BJ_SUITS)
-      for (const v of BJ_VALS)
-        d.push({suit: s, val: v});
-  for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i+1));
-    [d[i], d[j]] = [d[j], d[i]];
-  }
-  return d;
-}
-
-function bjCardNum(c) {
-  if (['J','Q','K'].includes(c.val)) return 10;
-  if (c.val === 'A') return 11;
-  return +c.val;
-}
-
-function bjScore(hand) {
-  let s = 0, aces = 0;
-  for (const c of hand) { s += bjCardNum(c); if (c.val==='A') aces++; }
-  while (s > 21 && aces > 0) { s -= 10; aces--; }
-  return s;
-}
-
-function bjPop() {
-  if (BJ.deck.length < 20) BJ.deck = bjMakeDeck();
-  return BJ.deck.pop();
-}
-
-/* ── 渲染牌 ── */
-function bjMakeCardEl(card, faceDown = false, delay = 0) {
-  const div = document.createElement('div');
-  div.className = 'bj-card' + (faceDown ? ' back' : '') +
-                  (BJ_RED.has(card.suit) && !faceDown ? ' red' : '');
-  div.dataset.suit = card.suit;
-  div.dataset.val  = card.val;
-
-  if (!faceDown) {
-    div.innerHTML = `
-      <div class="bj-card-inner">
-        <div class="bj-card-corner-tl">${card.val}<br>${card.suit}</div>
-        <div class="bj-card-center">${card.suit}</div>
-        <div class="bj-card-corner-br">${card.val}<br>${card.suit}</div>
-      </div>`;
-  }
-  // 发牌动画延迟
-  setTimeout(() => div.classList.add('dealt'), delay);
-  return div;
-}
-
-function bjFlipCard(el, card) {
-  el.classList.remove('back');
-  if (BJ_RED.has(card.suit)) el.classList.add('red');
-  el.innerHTML = `
-    <div class="bj-card-inner">
-      <div class="bj-card-corner-tl">${card.val}<br>${card.suit}</div>
-      <div class="bj-card-center">${card.suit}</div>
-      <div class="bj-card-corner-br">${card.val}<br>${card.suit}</div>
-    </div>`;
-  el.classList.add('flip-anim');
-  setTimeout(() => el.classList.remove('flip-anim'), 400);
-}
-
-function bjRender(hideDealer = true) {
-  const ph = document.getElementById('bj-player-hand');
-  const dh = document.getElementById('bj-dealer-hand');
-  const ps = document.getElementById('bj-player-score');
-  const ds = document.getElementById('bj-dealer-score');
-  ph.innerHTML = ''; dh.innerHTML = '';
-
-  BJ.player.forEach((c, i) => ph.appendChild(bjMakeCardEl(c, false, i * 120)));
-
-  BJ.dealer.forEach((c, i) => {
-    const hidden = hideDealer && i === 1;
-    dh.appendChild(bjMakeCardEl(c, hidden, i * 120));
-  });
-
-  ps.textContent = bjScore(BJ.player);
-  ds.textContent = hideDealer ? bjCardNum(BJ.dealer[0]) : bjScore(BJ.dealer);
-
-  document.getElementById('bj-bet-val').textContent   = BJ.bet;
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-}
-
-function bjAddCard(target, card, delay = 0) {
-  const hand = target === 'player' ? 'bj-player-hand' : 'bj-dealer-hand';
-  document.getElementById(hand).appendChild(bjMakeCardEl(card, false, delay));
-}
-
-/* ── 按钮显示控制 ── */
-function bjShowBtns(ids) {
-  ['bj-deal-btn','bj-hit-btn','bj-stand-btn','bj-double-btn',
-   'bj-split-btn','bj-insure-btn','bj-new-btn'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = ids.includes(id) ? '' : 'none';
-  });
-}
-
-function bjChipsDisabled(disabled) {
-  document.querySelectorAll('.bj-chip').forEach(c =>
-    c.classList.toggle('disabled', disabled));
-}
-
-function bjSetResult(text, cls = '') {
-  const el = document.getElementById('bj-result');
-  el.textContent = text;
-  el.className = 'bj-result show ' + cls;
-}
-function bjClearResult() {
-  const el = document.getElementById('bj-result');
-  el.textContent = '';
-  el.className = 'bj-result';
-}
-
-/* ── 开局 ── */
-function bjOpen(charIdx) {
-  if (!curWorld?.chars?.[charIdx]) return;
-  BJ.charIdx = charIdx;
-  const char = curWorld.chars[charIdx];
-
-  // 角色头像
-  const av = document.getElementById('bj-char-av');
-  if (char.portrait) {
-    av.innerHTML = `<img src="${char.portrait}" alt="">`;
-  } else {
-    av.textContent = char.name[0] || '?';
-  }
-  document.getElementById('bj-char-nm').textContent = char.name;
-
-  document.getElementById('bj-modal').classList.add('op');
-  document.body.style.overflow = 'hidden';
-
-  bjNewRound();
-}
-
-function bjClose() {
-  document.getElementById('bj-modal').classList.remove('op');
-  document.body.style.overflow = '';
-}
-function bjModalBgClick(e) {
-  if (e.target === document.getElementById('bj-modal')) bjClose();
-}
-
-/* ── 新一局 ── */
-function bjNewRound() {
-  if (!BJ.deck.length) BJ.deck = bjMakeDeck();
-  BJ.player      = [];
-  BJ.playerSplit = null;
-  BJ.dealer      = [];
-  BJ.bet         = 0;
-  BJ.insureBet   = 0;
-  BJ.insured     = false;
-  BJ.phase       = 'bet';
-  BJ.activeHand  = 'player';
-
-  document.getElementById('bj-player-hand').innerHTML = '';
-  document.getElementById('bj-dealer-hand').innerHTML = '';
-  document.getElementById('bj-player-score').textContent = '';
-  document.getElementById('bj-dealer-score').textContent = '';
-  document.getElementById('bj-bet-val').textContent = '0';
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-  bjClearResult();
-  bjChipsDisabled(false);
-  bjSay('idle');
-
-  // 破产重置
-  if (BJ.chips <= 0) {
-    BJ.chips = 1000;
-    document.getElementById('bj-chips-val').textContent = BJ.chips;
-  }
-
-  bjShowBtns(['bj-deal-btn']);
-  document.getElementById('bj-deal-btn').disabled = true; // 需先下注
-}
-
-/* ── 下注 ── */
-function bjBet(amount) {
-  if (BJ.phase !== 'bet') return;
-  if (BJ.chips < amount) return;
-  BJ.bet   += amount;
-  BJ.chips -= amount;
-  document.getElementById('bj-bet-val').textContent   = BJ.bet;
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-  document.getElementById('bj-deal-btn').disabled = false;
-}
-
-/* ── 发牌 ── */
-function bjDeal() {
-  if (BJ.bet === 0) return;
-  BJ.phase = 'play';
-  bjChipsDisabled(true);
-
-  BJ.player = [bjPop(), bjPop()];
-  BJ.dealer = [bjPop(), bjPop()];
-  bjRender(true);
-  bjSay('deal');
-
-  setTimeout(() => {
-    const ps = bjScore(BJ.player);
-    const canSplit   = BJ.player[0].val === BJ.player[1].val && BJ.chips >= BJ.bet;
-    const canDouble  = BJ.chips >= BJ.bet;
-    const dealerAce  = BJ.dealer[0].val === 'A';
-    const canInsure  = dealerAce && !BJ.insured && BJ.chips >= Math.floor(BJ.bet/2);
-
-    if (ps === 21) {
-      bjSay('bjack');
-      bjRevealAndSettle();
-      return;
-    }
-
-    const btns = ['bj-hit-btn','bj-stand-btn'];
-    if (canDouble)  btns.push('bj-double-btn');
-    if (canSplit)   btns.push('bj-split-btn');
-    if (canInsure)  btns.push('bj-insure-btn');
-    bjShowBtns(btns);
-  }, 700);
-}
-
-/* ── 要牌 ── */
-function bjHit() {
-  const card = bjPop();
-  BJ.player.push(card);
-  bjAddCard('player', card);
-  document.getElementById('bj-player-score').textContent = bjScore(BJ.player);
-  bjSay('hit');
-
-  // 移除不再可用的按钮
-  document.getElementById('bj-double-btn')?.style && (document.getElementById('bj-double-btn').style.display = 'none');
-  document.getElementById('bj-split-btn')?.style  && (document.getElementById('bj-split-btn').style.display  = 'none');
-  document.getElementById('bj-insure-btn')?.style && (document.getElementById('bj-insure-btn').style.display = 'none');
-
-  const s = bjScore(BJ.player);
-  if (s > 21)      { bjSay('bust'); bjRevealAndSettle(); }
-  else if (s === 21) bjStand();
-}
-
-/* ── 停牌 ── */
-function bjStand() {
-  bjSay('stand');
-  bjShowBtns([]);
-  bjDealerPlay();
-}
-
-/* ── 双倍 ── */
-function bjDouble() {
-  if (BJ.chips < BJ.bet) return;
-  BJ.chips -= BJ.bet;
-  BJ.bet   *= 2;
-  document.getElementById('bj-bet-val').textContent   = BJ.bet;
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-  bjSay('double');
-  const card = bjPop();
-  BJ.player.push(card);
-  bjAddCard('player', card);
-  setTimeout(() => {
-    document.getElementById('bj-player-score').textContent = bjScore(BJ.player);
-    bjRevealAndSettle();
-  }, 400);
-}
-
-/* ── 分牌 ── */
-function bjSplit() {
-  if (BJ.chips < BJ.bet) return;
-  BJ.chips    -= BJ.bet;
-  BJ.playerSplit = [BJ.player.pop()];
-  BJ.player.push(bjPop());
-  bjSay('split');
-  bjRender(true);
-  // 简化：分牌后各补一张牌，轮流继续
-  setTimeout(() => {
-    bjShowBtns(['bj-hit-btn','bj-stand-btn']);
-  }, 400);
-}
-
-/* ── 保险 ── */
-function bjInsure() {
-  const ins = Math.floor(BJ.bet / 2);
-  if (BJ.chips < ins) return;
-  BJ.chips    -= ins;
-  BJ.insureBet = ins;
-  BJ.insured   = true;
-  bjSay('insure');
-  document.getElementById('bj-insure-btn').style.display = 'none';
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-}
-
-/* ── 庄家补牌 ── */
-function bjDealerPlay() {
-  // 先翻庄家暗牌
-  const dh = document.getElementById('bj-dealer-hand');
-  const hiddenEl = dh.querySelector('.bj-card.back');
-  if (hiddenEl) bjFlipCard(hiddenEl, BJ.dealer[1]);
-  document.getElementById('bj-dealer-score').textContent = bjScore(BJ.dealer);
-
-  // 检查庄家有保险赔付
-  if (BJ.insured && BJ.dealer[1].val === 'A' && bjScore(BJ.dealer) === 21) {
-    BJ.chips += BJ.insureBet * 3; // 保险赔2:1
-  }
-
-  function dealerStep() {
-    if (bjScore(BJ.dealer) < 17) {
-      const card = bjPop();
-      BJ.dealer.push(card);
-      bjAddCard('dealer', card);
-      document.getElementById('bj-dealer-score').textContent = bjScore(BJ.dealer);
-      setTimeout(dealerStep, 500);
-    } else {
-      setTimeout(bjSettle, 400);
-    }
-  }
-  setTimeout(dealerStep, 600);
-}
-
-/* ── 亮牌结算（玩家21点或爆牌时直接结算） ── */
-function bjRevealAndSettle() {
-  bjShowBtns([]);
-  // 翻庄家暗牌
-  const dh = document.getElementById('bj-dealer-hand');
-  const hiddenEl = dh.querySelector('.bj-card.back');
-  if (hiddenEl) bjFlipCard(hiddenEl, BJ.dealer[1]);
-  setTimeout(() => {
-    document.getElementById('bj-dealer-score').textContent = bjScore(BJ.dealer);
-    bjSettle();
-  }, 500);
-}
-
-/* ── 判定输赢 ── */
-function bjSettle() {
-  const ps = bjScore(BJ.player);
-  const ds = bjScore(BJ.dealer);
-  const isBlackjack = BJ.player.length === 2 && ps === 21;
-
-  let outcome, payout;
-
-  if (ps > 21) {
-    outcome = 'bust'; payout = 0;
-  } else if (ds > 21 || ps > ds) {
-    if (isBlackjack) {
-      outcome = 'bjack'; payout = BJ.bet + Math.floor(BJ.bet * 1.5);
-    } else {
-      outcome = 'win';  payout = BJ.bet * 2;
-    }
-  } else if (ps === ds) {
-    outcome = 'push'; payout = BJ.bet; // 退还下注
-  } else {
-    outcome = 'lose'; payout = 0;
-  }
-
-  BJ.chips += payout;
-  BJ.phase = 'over';
-
-  const labels = {
-    bust:  ['爆牌', 'BUST',       'lose'],
-    win:   ['你赢了','YOU WIN',   'win'],
-    bjack: ['21点！','BLACKJACK!','win'],
-    push:  ['平局', 'PUSH',       'push'],
-    lose:  ['你输了','YOU LOSE',  'lose'],
-  };
-  const [cn, en, cls] = labels[outcome];
-  bjSetResult(`${cn}  ${en}`, cls);
-  bjSay(outcome === 'bust' ? 'bust' :
-        outcome === 'win' || outcome === 'bjack' ? 'win' :
-        outcome === 'push' ? 'push' : 'lose');
-
-  document.getElementById('bj-chips-val').textContent = BJ.chips;
-  bjShowBtns(['bj-new-btn']);
-}
-
-/* ── ESC 关闭 ── */
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    const bj = document.getElementById('bj-modal');
-    if (bj?.classList.contains('op')) { bjClose(); return; }
-  }
-});
-
-/* ── 按角色显隐游戏按钮 ── */
-function updateGameBtns() {
-  const row = document.getElementById('game-entry-row');
-  if (!row || !curWorld) return;
-  const b0 = document.getElementById('game-btn-0');
-  const b1 = document.getElementById('game-btn-1');
-  if (b0) b0.style.display = curWorld.chars?.[0] ? '' : 'none';
-  if (b1) b1.style.display = curWorld.chars?.[1] ? '' : 'none';
-  // 如果两个都没有，隐藏整行
-  const anyVisible = (curWorld.chars?.[0] || curWorld.chars?.[1]);
-  row.style.display = anyVisible ? '' : 'none';
-}
