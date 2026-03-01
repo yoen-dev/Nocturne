@@ -146,6 +146,7 @@ function loadDetail(w) {
   chatHistMap = {};
   easterEggActive = {};
   buildChatTabs(w);
+  setTimeout(updateGameBtns, 50);
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -716,5 +717,173 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const modal = document.getElementById('gal-modal');
     if (modal?.classList.contains('op')) { galModalClose(); return; }
+  }
+});
+
+/* ══════════════════════════════════════════════════════════
+   21点游戏
+══════════════════════════════════════════════════════════ */
+const BJ_LINES={
+  0:{idle:['……随便坐。','……'],deal:['发牌了。','开始吧。'],hit:['……还要？','随便。'],stand:['停了？','……嗯。'],double:['……胆子不小。'],split:['分牌。'],insure:['……保险？'],bust:['爆了。','……差一点。'],win:['……赢了。','运气不错。'],lose:['输了。','……再来。'],push:['平局。','……重来。'],bjack:['21点。','……运气好。']},
+  1:{idle:['来来来♡','乱数不手软哦～'],deal:['开始啦♡','这次乱数赢定了♡'],hit:['哇还要！','好好好～'],stand:['哎不要了啊？','怂了～'],double:['哇双倍！！♡'],split:['分开打！！'],insure:['买保险啊！'],bust:['爆啦爆啦！哈哈～','太贪心啦♡'],win:['咦赢了！厉害嘛♡','……算你的。'],lose:['嘿嘿乱数赢啦♡','再来再来！'],push:['平局！？重来！！'],bjack:['哇——！！21点！！♡']},
+};
+function bjLine(ci,k){const p=BJ_LINES[ci]?.[k]??BJ_LINES[0].idle;return p[Math.floor(Math.random()*p.length)];}
+function bjSay(k){const el=document.getElementById('bj-speech-text');if(el)el.textContent=bjLine(BJ.charIdx,k);}
+
+const BJ={charIdx:0,deck:[],player:[],playerSplit:null,dealer:[],chips:1000,bet:0,insureBet:0,phase:'bet',insured:false};
+const BJ_SUITS=['♠','♣','♥','♦'],BJ_VALS=['A','2','3','4','5','6','7','8','9','10','J','Q','K'],BJ_RED=new Set(['♥','♦']);
+
+function bjMakeDeck(n=6){const d=[];for(let i=0;i<n;i++)for(const s of BJ_SUITS)for(const v of BJ_VALS)d.push({suit:s,val:v});for(let i=d.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]];}return d;}
+function bjNum(c){if(['J','Q','K'].includes(c.val))return 10;if(c.val==='A')return 11;return+c.val;}
+function bjScore(h){let s=0,a=0;for(const c of h){s+=bjNum(c);if(c.val==='A')a++;}while(s>21&&a>0){s-=10;a--;}return s;}
+function bjPop(){if(BJ.deck.length<20)BJ.deck=bjMakeDeck();return BJ.deck.pop();}
+
+function bjCardEl(card,faceDown=false,delay=0){
+  const d=document.createElement('div');
+  d.className='bj-card'+(faceDown?' back':'')+(BJ_RED.has(card.suit)&&!faceDown?' red':'');
+  d.dataset.suit=card.suit;d.dataset.val=card.val;
+  if(!faceDown)d.innerHTML=`<div class="bj-card-inner"><div class="bj-card-corner-tl">${card.val}<br>${card.suit}</div><div class="bj-card-center">${card.suit}</div><div class="bj-card-corner-br">${card.val}<br>${card.suit}</div></div>`;
+  setTimeout(()=>d.classList.add('dealt'),delay);
+  return d;
+}
+function bjFlip(el,card){
+  el.classList.remove('back');if(BJ_RED.has(card.suit))el.classList.add('red');
+  el.innerHTML=`<div class="bj-card-inner"><div class="bj-card-corner-tl">${card.val}<br>${card.suit}</div><div class="bj-card-center">${card.suit}</div><div class="bj-card-corner-br">${card.val}<br>${card.suit}</div></div>`;
+  el.classList.add('flip-anim');setTimeout(()=>el.classList.remove('flip-anim'),400);
+}
+function bjRender(hd=true){
+  const ph=document.getElementById('bj-player-hand'),dh=document.getElementById('bj-dealer-hand');
+  ph.innerHTML='';dh.innerHTML='';
+  BJ.player.forEach((c,i)=>ph.appendChild(bjCardEl(c,false,i*120)));
+  BJ.dealer.forEach((c,i)=>dh.appendChild(bjCardEl(c,hd&&i===1,i*120)));
+  document.getElementById('bj-player-score').textContent=bjScore(BJ.player);
+  document.getElementById('bj-dealer-score').textContent=hd?bjNum(BJ.dealer[0]):bjScore(BJ.dealer);
+  document.getElementById('bj-bet-val').textContent=BJ.bet;
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+}
+function bjAdd(t,c,d=0){document.getElementById(t==='player'?'bj-player-hand':'bj-dealer-hand').appendChild(bjCardEl(c,false,d));}
+function bjBtns(ids){['bj-deal-btn','bj-hit-btn','bj-stand-btn','bj-double-btn','bj-split-btn','bj-insure-btn','bj-new-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=ids.includes(id)?'':'none';});}
+function bjChips(v){document.querySelectorAll('.bj-chip').forEach(c=>c.classList.toggle('disabled',v));}
+function bjRes(t,cls=''){const el=document.getElementById('bj-result');el.textContent=t;el.className='bj-result show '+cls;}
+function bjClrRes(){const el=document.getElementById('bj-result');el.textContent='';el.className='bj-result';}
+
+function bjOpen(ci){
+  if(!curWorld?.chars?.[ci])return;
+  BJ.charIdx=ci;
+  const ch=curWorld.chars[ci];
+  const av=document.getElementById('bj-char-av');
+  av.innerHTML=ch.portrait?`<img src="${ch.portrait}" alt="">`:(ch.name[0]||'?');
+  document.getElementById('bj-char-nm').textContent=ch.name;
+  document.getElementById('bj-modal').classList.add('op');
+  document.body.style.overflow='hidden';
+  bjNewRound();
+}
+function bjClose(){document.getElementById('bj-modal').classList.remove('op');document.body.style.overflow='';}
+function bjModalBgClick(e){if(e.target===document.getElementById('bj-modal'))bjClose();}
+
+function bjNewRound(){
+  if(!BJ.deck.length)BJ.deck=bjMakeDeck();
+  BJ.player=[];BJ.playerSplit=null;BJ.dealer=[];BJ.bet=0;BJ.insureBet=0;BJ.insured=false;BJ.phase='bet';
+  ['bj-player-hand','bj-dealer-hand'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='';});
+  ['bj-player-score','bj-dealer-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='';});
+  document.getElementById('bj-bet-val').textContent='0';
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+  bjClrRes();bjChips(false);bjSay('idle');
+  if(BJ.chips<=0){BJ.chips=1000;document.getElementById('bj-chips-val').textContent=1000;}
+  bjBtns(['bj-deal-btn']);
+  document.getElementById('bj-deal-btn').disabled=true;
+}
+function bjBet(amount){
+  if(BJ.phase!=='bet'||BJ.chips<amount)return;
+  BJ.bet+=amount;BJ.chips-=amount;
+  document.getElementById('bj-bet-val').textContent=BJ.bet;
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+  document.getElementById('bj-deal-btn').disabled=false;
+}
+function bjDeal(){
+  if(!BJ.bet)return;BJ.phase='play';bjChips(true);
+  BJ.player=[bjPop(),bjPop()];BJ.dealer=[bjPop(),bjPop()];
+  bjRender(true);bjSay('deal');
+  setTimeout(()=>{
+    if(bjScore(BJ.player)===21){bjSay('bjack');bjReveal();return;}
+    const btns=['bj-hit-btn','bj-stand-btn'];
+    if(BJ.chips>=BJ.bet)btns.push('bj-double-btn');
+    if(BJ.player[0].val===BJ.player[1].val&&BJ.chips>=BJ.bet)btns.push('bj-split-btn');
+    if(BJ.dealer[0].val==='A'&&!BJ.insured&&BJ.chips>=Math.floor(BJ.bet/2))btns.push('bj-insure-btn');
+    bjBtns(btns);
+  },700);
+}
+function bjHit(){
+  const c=bjPop();BJ.player.push(c);bjAdd('player',c);
+  document.getElementById('bj-player-score').textContent=bjScore(BJ.player);
+  bjSay('hit');
+  ['bj-double-btn','bj-split-btn','bj-insure-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+  const s=bjScore(BJ.player);
+  if(s>21){bjSay('bust');bjReveal();}else if(s===21)bjStand();
+}
+function bjStand(){bjSay('stand');bjBtns([]);bjDealerPlay();}
+function bjDouble(){
+  if(BJ.chips<BJ.bet)return;BJ.chips-=BJ.bet;BJ.bet*=2;
+  document.getElementById('bj-bet-val').textContent=BJ.bet;
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+  bjSay('double');const c=bjPop();BJ.player.push(c);bjAdd('player',c);
+  setTimeout(()=>{document.getElementById('bj-player-score').textContent=bjScore(BJ.player);bjReveal();},400);
+}
+function bjSplit(){
+  if(BJ.chips<BJ.bet)return;BJ.chips-=BJ.bet;
+  BJ.playerSplit=[BJ.player.pop()];BJ.player.push(bjPop());
+  bjSay('split');bjRender(true);
+  setTimeout(()=>bjBtns(['bj-hit-btn','bj-stand-btn']),400);
+}
+function bjInsure(){
+  const ins=Math.floor(BJ.bet/2);if(BJ.chips<ins)return;
+  BJ.chips-=ins;BJ.insureBet=ins;BJ.insured=true;bjSay('insure');
+  const el=document.getElementById('bj-insure-btn');if(el)el.style.display='none';
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+}
+function bjDealerPlay(){
+  const dh=document.getElementById('bj-dealer-hand');
+  const hidden=dh.querySelector('.bj-card.back');if(hidden)bjFlip(hidden,BJ.dealer[1]);
+  document.getElementById('bj-dealer-score').textContent=bjScore(BJ.dealer);
+  if(BJ.insured&&bjScore(BJ.dealer)===21)BJ.chips+=BJ.insureBet*3;
+  function step(){
+    if(bjScore(BJ.dealer)<17){const c=bjPop();BJ.dealer.push(c);bjAdd('dealer',c);document.getElementById('bj-dealer-score').textContent=bjScore(BJ.dealer);setTimeout(step,500);}
+    else setTimeout(bjSettle,400);
+  }
+  setTimeout(step,600);
+}
+function bjReveal(){
+  bjBtns([]);
+  const dh=document.getElementById('bj-dealer-hand');
+  const hidden=dh.querySelector('.bj-card.back');if(hidden)bjFlip(hidden,BJ.dealer[1]);
+  setTimeout(()=>{document.getElementById('bj-dealer-score').textContent=bjScore(BJ.dealer);bjSettle();},500);
+}
+function bjSettle(){
+  const ps=bjScore(BJ.player),ds=bjScore(BJ.dealer),isBJ=BJ.player.length===2&&ps===21;
+  let outcome,payout;
+  if(ps>21){outcome='bust';payout=0;}
+  else if(ds>21||ps>ds){outcome=isBJ?'bjack':'win';payout=isBJ?BJ.bet+Math.floor(BJ.bet*1.5):BJ.bet*2;}
+  else if(ps===ds){outcome='push';payout=BJ.bet;}
+  else{outcome='lose';payout=0;}
+  BJ.chips+=payout;BJ.phase='over';
+  const L={bust:['爆牌','BUST','lose'],win:['你赢了','YOU WIN','win'],bjack:['21点！','BLACKJACK!','win'],push:['平局','PUSH','push'],lose:['你输了','YOU LOSE','lose']};
+  const[cn,en,cls]=L[outcome];
+  bjRes(`${cn}  ${en}`,cls);
+  bjSay(outcome==='bust'?'bust':outcome==='win'||outcome==='bjack'?'win':outcome==='push'?'push':'lose');
+  document.getElementById('bj-chips-val').textContent=BJ.chips;
+  bjBtns(['bj-new-btn']);
+}
+function updateGameBtns(){
+  const b0=document.getElementById('game-btn-0'),b1=document.getElementById('game-btn-1');
+  if(!curWorld)return;
+  if(b0)b0.style.display=curWorld.chars?.[0]?'flex':'none';
+  if(b1)b1.style.display=curWorld.chars?.[1]?'flex':'none';
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const bj=document.getElementById('bj-modal');
+    if(bj?.classList.contains('op')){bjClose();return;}
+    const gal=document.getElementById('gal-modal');
+    if(gal?.classList.contains('op')){galModalClose();return;}
   }
 });

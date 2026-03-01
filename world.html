@@ -66,40 +66,45 @@
   <div class="d-sec" id="sec-chat">
     <div class="sec-lbl">DIALOGUE</div>
 
-    <!-- 游戏入口 -->
-    <div class="game-entry-row" id="game-entry-row">
-      <button class="game-entry-btn" id="game-btn-0" onclick="bjOpen(0)">
-        <span class="geb-suit">♠</span>
-        <span class="geb-text">与老板玩一局 · 21 POINT</span>
-        <span class="geb-arrow">→</span>
-      </button>
-      <button class="game-entry-btn" id="game-btn-1" onclick="bjOpen(1)">
-        <span class="geb-suit">♦</span>
-        <span class="geb-text">与乱数玩一局 · 21 POINT</span>
-        <span class="geb-arrow">→</span>
-      </button>
-    </div>
+    <div class="chat-outer">
 
-    <div class="chat-wrap">
-      <div class="chat-tabs" id="d-ctabs"></div>
-      <div class="chat-box">
-        <div class="chat-hd">
-          <div class="chat-av" id="d-cav">—</div>
-          <div>
-            <div class="chat-cn" id="d-cname">—</div>
-            <div class="chat-cr" id="d-crole">—</div>
+      <!-- 左：悠葉 -->
+      <div class="game-side game-side-left" id="game-btn-0" onclick="bjOpen(0)">
+        <div class="game-side-icon">♠</div>
+        <div class="game-side-label">与老板<br>玩一局</div>
+        <div class="game-side-sub">21 POINT</div>
+      </div>
+
+      <!-- 对话框 -->
+      <div class="chat-wrap">
+        <div class="chat-tabs" id="d-ctabs"></div>
+        <div class="chat-box">
+          <div class="chat-hd">
+            <div class="chat-av" id="d-cav">—</div>
+            <div>
+              <div class="chat-cn" id="d-cname">—</div>
+              <div class="chat-cr" id="d-crole">—</div>
+            </div>
+            <div class="chat-ol">ONLINE</div>
           </div>
-          <div class="chat-ol">ONLINE</div>
-        </div>
-        <div class="chat-msgs" id="d-msgs"></div>
-        <div class="chat-input-row">
-          <textarea class="chat-ta" id="d-input" rows="1"
-            placeholder="Say something…"
-            onkeydown="ckEnter(event)"
-            oninput="autoR(this)"></textarea>
-          <button class="chat-send" id="d-send" onclick="doChat()">↑</button>
+          <div class="chat-msgs" id="d-msgs"></div>
+          <div class="chat-input-row">
+            <textarea class="chat-ta" id="d-input" rows="1"
+              placeholder="Say something…"
+              onkeydown="ckEnter(event)"
+              oninput="autoR(this)"></textarea>
+            <button class="chat-send" id="d-send" onclick="doChat()">↑</button>
+          </div>
         </div>
       </div>
+
+      <!-- 右：乱数 -->
+      <div class="game-side game-side-right" id="game-btn-1" onclick="bjOpen(1)">
+        <div class="game-side-icon">♦</div>
+        <div class="game-side-label">与乱数<br>玩一局</div>
+        <div class="game-side-sub">21 POINT</div>
+      </div>
+
     </div>
   </div>
 
