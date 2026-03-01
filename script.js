@@ -76,20 +76,11 @@ function slide(dir) {
    PAGE NAVIGATION
 ══════════════════════════════════════════════════════════ */
 function goWorld(idx) {
-  curWorld = WORLDS[idx];
-  curIdx   = idx;
-  document.getElementById('home').classList.remove('active');
-  document.getElementById('detail').classList.add('active');
-  document.title = curWorld.name + ' · Nocturne';
-  window.scrollTo(0, 0);
-  loadDetail(curWorld);
-  setTimeout(initReveal, 80);
+  window.location.href = 'world.html?id=' + WORLDS[idx].id;
 }
 
 function goHome() {
-  document.getElementById('detail').classList.remove('active');
-  document.getElementById('home').classList.add('active');
-  document.title = 'Nocturne';
+  window.location.href = 'index.html';
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -562,29 +553,55 @@ function lbClose() { document.getElementById('lb').classList.remove('op'); }
    KEYBOARD
 ══════════════════════════════════════════════════════════ */
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') lbClose();
-  if (document.getElementById('home').classList.contains('active')) {
+  if (e.key === 'Escape') { const lb = document.getElementById('lb'); if (lb) lbClose(); }
+  const homeEl = document.getElementById('home');
+  if (homeEl && homeEl.classList.contains('active')) {
     if (e.key === 'ArrowLeft')  slide(-1);
     if (e.key === 'ArrowRight') slide(1);
     if (e.key === 'Enter')      goWorld(curIdx);
   }
 });
 window.addEventListener('resize', () => {
-  if (document.getElementById('home').classList.contains('active')) updateSlider();
+  const homeEl = document.getElementById('home');
+  if (homeEl && homeEl.classList.contains('active')) updateSlider();
 });
 
 /* ══════════════════════════════════════════════════════════
    INIT
 ══════════════════════════════════════════════════════════ */
-buildHome();
-mpUI();
-// 用户第一次点击页面任何地方时自动开始播音乐
-if (tracks.length) {
-  const autoPlay = () => {
-    if (!playing) mpPlay(tIdx);
-    document.removeEventListener('click', autoPlay);
-    document.removeEventListener('touchstart', autoPlay);
-  };
-  document.addEventListener('click', autoPlay);
-  document.addEventListener('touchstart', autoPlay);
+/* ── 根据页面判断初始化 ── */
+const isWorldPage = !!document.getElementById('detail');
+const isHomePage  = !!document.getElementById('home');
+
+if (isHomePage && !isWorldPage) {
+  // 首页 index.html
+  buildHome();
+  mpUI();
+  if (tracks.length) {
+    const autoPlay = () => {
+      if (!playing) mpPlay(tIdx);
+      document.removeEventListener('click', autoPlay);
+      document.removeEventListener('touchstart', autoPlay);
+    };
+    document.addEventListener('click', autoPlay);
+    document.addEventListener('touchstart', autoPlay);
+  }
+} else if (isWorldPage) {
+  // 详情页 world.html：从 URL 参数读取世界 id
+  const worldId = new URLSearchParams(location.search).get('id');
+  curWorld = WORLDS.find(w => w.id === worldId) || WORLDS[0];
+  curIdx   = WORLDS.indexOf(curWorld);
+  document.title = curWorld.name + ' · Nocturne';
+  loadDetail(curWorld);
+  setTimeout(initReveal, 80);
+  mpUI();
+  if (tracks.length) {
+    const autoPlay = () => {
+      if (!playing) mpPlay(tIdx);
+      document.removeEventListener('click', autoPlay);
+      document.removeEventListener('touchstart', autoPlay);
+    };
+    document.addEventListener('click', autoPlay);
+    document.addEventListener('touchstart', autoPlay);
+  }
 }
