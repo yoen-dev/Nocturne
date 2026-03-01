@@ -8,6 +8,8 @@ let curWorld = null;
 let nvIdx = 0, nvPages = [];
 let chatHistMap = {};
 let activeChatChar = 0;
+let activeIdentity = {};
+let easterEggActive = {};
 let tracks = [...TRACKS];
 let tIdx = 0, playing = false;
 const aud = document.getElementById('aud');
@@ -234,16 +236,15 @@ function nvFlip(dir) {
 function buildChatTabs(w) {
   const tabs = document.getElementById('d-ctabs');
   tabs.innerHTML = '';
-
   if (w.chars.length > 1) {
     tabs.classList.add('visible');
-    w.chars.forEach((c, i) => {
+    w.chars.forEach((ch, i) => {
       const btn = document.createElement('button');
       btn.className = 'ctab' + (i === 0 ? ' on' : '');
       btn.innerHTML = `
-        <div class="ctab-av">${c.portrait ? `<img src="${c.portrait}">` : c.name[0]}</div>
-        <span>${c.name}</span>
-        <span class="ctab-alias">${c.alias}</span>
+        <div class="ctab-av">${ch.portrait ? `<img src="${ch.portrait}">` : ch.name[0]}</div>
+        <span>${ch.name}</span>
+        <span class="ctab-alias">${ch.alias}</span>
       `;
       btn.onclick = () => switchChar(i);
       tabs.appendChild(btn);
@@ -251,36 +252,113 @@ function buildChatTabs(w) {
   } else {
     tabs.classList.remove('visible');
   }
-
   switchChar(0);
+}
+
+/* ── 身份选择弹窗 ── */
+function showIdentityPicker(charIdx, onSelect) {
+  const w = curWorld;
+  if (!w.chat.identities) { onSelect('stranger', ''); return; }
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#0d0d0d;border:1px solid rgba(255,255,255,.12);padding:32px 36px;min-width:300px;max-width:400px;display:flex;flex-direction:column;gap:12px;';
+  const charName = w.chars[charIdx].name;
+  box.innerHTML = `
+    <div style="font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:.25em;color:#444;margin-bottom:2px;">BEFORE YOU ENTER</div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:1.15rem;color:#ddd;margin-bottom:6px;">你与<span style="color:#fff;margin:0 4px;">${charName}</span>的关系是？</div>
+  `;
+  w.chat.identities.forEach(id => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'padding:11px 16px;text-align:left;border:1px solid rgba(255,255,255,.08);background:#141414;color:#888;font-size:.82rem;transition:all .2s;cursor:pointer;';
+    btn.textContent = id.label;
+    btn.onmouseenter = () => { btn.style.borderColor='rgba(255,255,255,.25)'; btn.style.color='#ddd'; };
+    btn.onmouseleave = () => { btn.style.borderColor='rgba(255,255,255,.08)'; btn.style.color='#888'; };
+    if (id.value === 'custom') {
+      btn.onclick = () => {
+        btn.style.display = 'none';
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;';
+        const inp = document.createElement('input');
+        inp.placeholder = '输入你的身份，如：他的前搭档';
+        inp.style.cssText = 'flex:1;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.15);padding:9px 12px;color:#ddd;font-size:.8rem;outline:none;';
+        const ok = document.createElement('button');
+        ok.textContent = '确认';
+        ok.style.cssText = 'padding:9px 14px;background:#1a1a1a;border:1px solid rgba(255,255,255,.12);color:#aaa;font-size:.75rem;cursor:pointer;';
+        ok.onclick = () => { document.body.removeChild(overlay); onSelect('custom', inp.value.trim() || '访客'); };
+        inp.onkeydown = e => { if(e.key==='Enter') ok.click(); };
+        row.appendChild(inp); row.appendChild(ok);
+        box.appendChild(row);
+        setTimeout(() => inp.focus(), 50);
+      };
+    } else {
+      btn.onclick = () => { document.body.removeChild(overlay); onSelect(id.value, ''); };
+    }
+    box.appendChild(btn);
+  });
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+/* ── 获取有效 system prompt ── */
+function getSystemPrompt(charIdx) {
+  const w   = curWorld;
+  const key = w.id + '_' + charIdx;
+  if (easterEggActive[key] && w.chat.easterEgg?.systems?.[charIdx]) {
+    return w.chat.easterEgg.systems[charIdx];
+  }
+  let base = w.chat.systems[charIdx] || w.chat.systems[0];
+  const identity = activeIdentity[key];
+  if (identity && w.chat.identityAppend?.[charIdx]) {
+    const append = w.chat.identityAppend[charIdx][identity];
+    if (append) base += '\n\n' + append;
+    else if (identity !== 'stranger' && identity !== 'friend') {
+      base += `\n\n【当前对话者身份】${identity}，请根据这个身份调整语气与亲疏感。`;
+    }
+  }
+  return base;
+}
+
+/* ── 获取开场白 ── */
+function getGreeting(charIdx) {
+  const w   = curWorld;
+  const key = w.id + '_' + charIdx;
+  if (easterEggActive[key] && w.chat.easterEgg?.greetings?.[charIdx]) {
+    return w.chat.easterEgg.greetings[charIdx];
+  }
+  const g = w.chat.greetings[charIdx] || w.chat.greetings[0];
+  if (typeof g === 'object') {
+    const id = activeIdentity[key] || 'stranger';
+    return g[id] || g.stranger || Object.values(g)[0];
+  }
+  return g;
 }
 
 function switchChar(idx) {
   activeChatChar = idx;
-  const c   = curWorld.chars[idx];
+  const ch  = curWorld.chars[idx];
   const key = curWorld.id + '_' + idx;
-
-  document.getElementById('d-cname').textContent = c.name;
-  document.getElementById('d-crole').textContent = c.alias;
+  document.getElementById('d-cname').textContent = ch.name;
+  document.getElementById('d-crole').textContent = ch.alias;
   const av = document.getElementById('d-cav');
-  av.innerHTML = c.portrait ? `<img src="${c.portrait}">` : '—';
-  document.getElementById('d-input').placeholder = `向 ${c.name} 说点什么……`;
-
+  av.innerHTML = ch.portrait ? `<img src="${ch.portrait}">` : '—';
+  document.getElementById('d-input').placeholder = `向 ${ch.name} 说点什么……`;
+  document.querySelectorAll('.ctab').forEach((b, i) => b.classList.toggle('on', i === idx));
   if (!chatHistMap[key]) chatHistMap[key] = [];
-
   const msgs = document.getElementById('d-msgs');
   msgs.innerHTML = '';
-
   if (chatHistMap[key].length === 0) {
-    // 第一次进入，显示开场白
-    const greeting = curWorld.chat.greetings[idx] || curWorld.chat.greetings[0];
-    addMsg('ai', greeting);
+    if (curWorld.chat.identities) {
+      showIdentityPicker(idx, (identityVal, customText) => {
+        activeIdentity[key] = identityVal === 'custom' ? customText : identityVal;
+        addMsg('ai', getGreeting(idx));
+      });
+    } else {
+      addMsg('ai', getGreeting(idx));
+    }
   } else {
-    // 恢复历史对话
     chatHistMap[key].forEach(m => addMsg(m.role === 'user' ? 'user' : 'ai', m.content, true));
   }
-
-  document.querySelectorAll('.ctab').forEach((b, i) => b.classList.toggle('on', i === idx));
 }
 
 function addMsg(type, text, silent = false) {
@@ -321,6 +399,20 @@ async function doChat() {
   const key = curWorld.id + '_' + activeChatChar;
   if (!chatHistMap[key]) chatHistMap[key] = [];
 
+  // 彩蛋检测
+  const egg = curWorld.chat.easterEgg;
+  if (egg?.trigger) {
+    const triggers = Array.isArray(egg.trigger) ? egg.trigger : [egg.trigger];
+    if (triggers.some(t => txt.includes(t)) && !easterEggActive[key]) {
+      easterEggActive[key] = true;
+      chatHistMap[key] = [];
+      document.getElementById('d-msgs').innerHTML = '';
+      inp.value = ''; inp.style.height = 'auto';
+      setTimeout(() => addMsg('ai', egg.greetings?.[activeChatChar] || getGreeting(activeChatChar)), 300);
+      return;
+    }
+  }
+
   addMsg('user', txt);
   chatHistMap[key].push({ role: 'user', content: txt });
 
@@ -347,7 +439,7 @@ async function doChat() {
       body: JSON.stringify({
         model:      API_MODEL,
         max_tokens: 400,
-        system:     curWorld.chat.systems[activeChatChar] || curWorld.chat.systems[0],
+        system:     getSystemPrompt(activeChatChar),
         messages:   chatHistMap[key],
       }),
     });
