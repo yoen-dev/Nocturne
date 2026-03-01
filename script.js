@@ -168,6 +168,7 @@ function loadDetail(w) {
 
   /* 对话 */
   chatHistMap = {};
+  easterEggActive = {};
   buildChatTabs(w);
 }
 
@@ -358,17 +359,28 @@ function switchChar(idx) {
   const msgs = document.getElementById('d-msgs');
   msgs.innerHTML = '';
   if (chatHistMap[key].length === 0) {
-    if (curWorld.chat.identities) {
-      showIdentityPicker(idx, (identityVal, customText) => {
-        if (identityVal === 'easter_egg') {
-          easterEggActive[key] = true;
-          activeIdentity[key] = customText;
+    if (easterEggActive[key]) {
+      // 彩蛋已由其他角色触发并同步，直接跳过身份框
+      addMsg('ai', getGreeting(idx));
+    } else if (curWorld.chat.identities) {
+      // 等用户第一次点击输入框再弹身份框
+      const inp = document.getElementById('d-input');
+      const onFirstFocus = () => {
+        inp.removeEventListener('focus', onFirstFocus);
+        showIdentityPicker(idx, (identityVal, customText) => {
+          if (identityVal === 'easter_egg') {
+            // 同时激活所有角色的彩蛋状态
+            curWorld.chars.forEach((_, i) => {
+              easterEggActive[curWorld.id + '_' + i] = true;
+            });
+            activeIdentity[key] = customText;
+          } else {
+            activeIdentity[key] = identityVal === 'custom' ? customText : identityVal;
+          }
           addMsg('ai', getGreeting(idx));
-        } else {
-          activeIdentity[key] = identityVal === 'custom' ? customText : identityVal;
-          addMsg('ai', getGreeting(idx));
-        }
-      });
+        });
+      };
+      inp.addEventListener('focus', onFirstFocus);
     } else {
       addMsg('ai', getGreeting(idx));
     }
