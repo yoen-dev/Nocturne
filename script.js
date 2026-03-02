@@ -819,38 +819,65 @@ function bjScore(h) { let s=0,a=0; for(const c of h){s+=bjNum(c);if(c.val==='A')
 
 /* 作弊牌堆：给玩家发小牌，庄家发大牌，确保玩家必输 */
 function bjMakeRiggedDeck() {
-  // 玩家会拿到：2,3,4,5,6,7（小牌），容易爆牌
-  // 庄家会拿到：10,J,Q,K,A（大牌），容易接近21
-  const small = [];
-  const big   = [];
-  for (const s of BJ_SUITS) {
-    for (const v of ['2','3','4','5','6','7']) small.push({suit:s, val:v});
-    for (const v of ['10','J','Q','K','A'])    big.push({suit:s, val:v});
-  }
-  // 洗牌
-  const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];} return arr; };
-  shuffle(small); shuffle(big);
-  // 发牌顺序（pop从末尾取）：
-  // 初始发牌：玩家1,庄家1,玩家2,庄家2
-  // 庄家暗牌是好牌，玩家两张都是小牌
-  // 后续玩家要牌也从 small 取，庄家补牌从 big 取
-  // 构造一个混合队列：先放庄家补牌（big），再放玩家牌（small），再放庄家前两张（big）
-  const rigged = [];
-  // 庄家后续补牌（最多补3张，放在队列里备用）
-  for(let i=0;i<3;i++) rigged.push(big[i]);
-  // 玩家后续要牌（最多要5张）
-  for(let i=0;i<5;i++) rigged.push(small[i]);
-  // 初始4张：按 pop 顺序逆序排列
-  // pop顺序：庄家暗牌→玩家明牌→庄家明牌→玩家明牌
-  // 所以队列从后往前：玩家明1,庄家明,玩家明2,庄家暗
-  rigged.push(small[5]);   // 玩家第1张（较小）
-  rigged.push(big[3]);     // 庄家明牌（大）
-  rigged.push(small[6]);   // 玩家第2张（较小）
-  rigged.push(big[4]);     // 庄家暗牌（大，如A或K）
+  // 出千策略：完全靠牌面操控，不改结果判定
+  //
+  // 发牌设计：
+  //   玩家：两张合计 14~16（危险区，要牌大概率爆，不要牌庄家赢）
+  //         如：8+6=14, 7+8=15, 9+6=15, 8+7=15, 9+7=16
+  //   庄家：明牌 7~9（看着普通），暗牌让合计落 17~19（稳赢区）
+  //         如：8(明)+9(暗)=17, 7(明)+10(暗)=17, 9(明)+9(暗)=18
+  //   玩家后续要牌：给 7~9（加上原有14~16大概率超21）
+
+  const sh = arr => {
+    for(let i=arr.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+  };
+  const pick = v => {
+    const suit = BJ_SUITS[Math.floor(Math.random()*BJ_SUITS.length)];
+    return {suit, val:v};
+  };
+
+  // 玩家两张：从合法组合里随机选一种
+  const playerCombos = [
+    ['8','6'],['7','8'],['9','6'],['8','7'],['9','7'],
+    ['6','8'],['5','9'],['9','5'],['6','9'],['7','7'],
+  ];
+  const [pv1, pv2] = sh(playerCombos)[0];
+  const p1 = pick(pv1);
+  const p2 = pick(pv2);
+
+  // 庄家两张：明牌 7~9，暗牌让合计=17~19
+  const dealerCombos = [
+    ['8','9'],  // 17
+    ['7','10'], // 17
+    ['9','9'],  // 18
+    ['8','10'], // 18
+    ['9','10'], // 19
+    ['7','J'],  // 17
+    ['8','J'],  // 18
+    ['9','J'],  // 19
+    ['7','Q'],  // 17
+    ['8','Q'],  // 18
+  ];
+  const [dv_show, dv_hid] = sh(dealerCombos)[0];
+  const dShow = pick(dv_show); // 明牌
+  const dHid  = pick(dv_hid);  // 暗牌
+
+  // 玩家后续要牌：7~9，加上14~16基本爆
+  const hitVals = sh(['7','8','9','10','J']);
+  const hitCards = hitVals.map(v => pick(v));
+
+  // pop取牌顺序（从队列末尾弹出）：
+  // 第1次pop = 庄家暗牌(dHid)
+  // 第2次pop = 玩家第2张(p2)
+  // 第3次pop = 庄家明牌(dShow)
+  // 第4次pop = 玩家第1张(p1)
+  // 之后玩家每次要牌 = hitCards依次弹出
+  const rigged = [...hitCards, p2, dShow, p1, dHid];
   return rigged;
 }
-
-let _bjDeckBackup = [];  // 作弊时备用正常牌堆（给庄家补牌用）
 
 function bjPop() {
   if (BJ.cheatMode && BJ.rigged.length > 0) return BJ.rigged.pop();
@@ -946,7 +973,8 @@ function bjNewRound() {
   // 作弊判定（静默）
   // charIdx=1（乱数）：必作弊
   // charIdx=0（悠葉）：30% 概率作弊（乱数在旁边"帮忙"）
-  BJ.cheatMode = BJ.charIdx === 1 || Math.random() < 0.3;
+  // charIdx=1(乱数)必作弊；charIdx=0(悠葉)5%概率乱数出现
+  BJ.cheatMode = BJ.charIdx === 1 || Math.random() < 0.05;
   if (BJ.cheatMode) BJ.rigged = bjMakeRiggedDeck();
 
   BJ.player=[]; BJ.playerSplit=null; BJ.dealer=[];
@@ -1010,17 +1038,22 @@ function bjInsure() {
   document.getElementById('bj-chips-val').textContent = BJ.chips;
 }
 
-/* 作弊模式下庄家补牌强制从正常大牌里拿 */
+/* 庄家补牌：作弊时找能赢玩家且≤21的牌，找不到才随机 */
 function bjDealerStep(resolve) {
   if (bjScore(BJ.dealer) < 17) {
     let card;
     if (BJ.cheatMode) {
-      // 从正常牌堆拿大牌保底（不用 rigged 队列，rigged 已给玩家用了）
       if (!BJ.deck.length) BJ.deck = bjMakeDeck();
-      // 找一张能让庄家 ≥17 的牌
-      const idx = BJ.deck.findIndex(c => {
-        const test = bjScore([...BJ.dealer, c]);
-        return test >= 17 && test <= 21;
+      const ps = bjScore(BJ.player);
+      // 优先找：补后 > 玩家分数 且 ≤21
+      let idx = BJ.deck.findIndex(c => {
+        const t = bjScore([...BJ.dealer, c]);
+        return t > ps && t <= 21;
+      });
+      // 次选：补后 ≥17 且 ≤21（至少站稳）
+      if (idx < 0) idx = BJ.deck.findIndex(c => {
+        const t = bjScore([...BJ.dealer, c]);
+        return t >= 17 && t <= 21;
       });
       card = idx >= 0 ? BJ.deck.splice(idx,1)[0] : BJ.deck.pop();
     } else {
