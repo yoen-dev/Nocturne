@@ -628,16 +628,13 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 /* ── 赌桌透视容器 ── */
 .bj-table-persp{
   flex:1;
-  perspective:800px;
-  perspective-origin:50% -20px;
   position:relative;z-index:3;
   display:flex;flex-direction:column;justify-content:flex-end;
   padding-bottom:0;
 }
 .bj-table-tilt{
-  transform:rotateX(26deg);
+  transform:none;
   transform-origin:50% 0%;
-  transform-style:preserve-3d;
 }
 
 /* 桌面主体 */
