@@ -504,14 +504,15 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 
 /* ══ 游戏入口：对话框左右两侧 ══ */
 .chat-outer{
-  display:grid;
-  grid-template-columns:0 1fr 0;
+  display:flex;
+  align-items:stretch;
   max-width:920px;margin:0 auto;
-  transition:grid-template-columns .2s;
 }
-/* 有游戏按钮时展开两侧列 */
-.chat-outer.has-game{
-  grid-template-columns:72px 1fr 72px;
+/* chat-wrap 在flex中自动居中撑满 */
+.chat-outer .chat-wrap{
+  flex:1;
+  max-width:760px;
+  margin:0 auto;
 }
 .game-side{
   display:flex;flex-direction:column;
@@ -541,7 +542,7 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 }
 .game-side:hover .game-side-sub{color:#555;}
 @media(max-width:700px){
-  .chat-outer.has-game{grid-template-columns:46px 1fr 46px;}
+  .game-side{width:46px;}
   .game-side-label{font-size:.5rem;}
 }
 
