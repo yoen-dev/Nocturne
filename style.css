@@ -591,7 +591,7 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
   flex:0 0 auto;
   display:flex;flex-direction:column;align-items:center;
   padding-top:8px;
-  margin-bottom:-12px;
+  margin-bottom:0;
 }
 .bj-speech-wrap{margin-bottom:6px;}
 .bj-speech{
@@ -610,8 +610,7 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
   color:rgba(255,255,255,.8);letter-spacing:.05em;
 }
 .bj-char-portrait{
-  width:120px;height:160px;
-  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
 }
 .bj-char-portrait img{
   height:100%;width:auto;object-fit:contain;object-position:bottom;
@@ -632,12 +631,12 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
   color:rgba(200,169,110,.4);
 }
 
-/* ── 赌桌容器（平面布局，椭圆桌沿靠box-shadow模拟）── */
+/* ── 赌桌透视容器 ── */
 .bj-table-persp{
   flex:1;
   position:relative;z-index:3;
   display:flex;flex-direction:column;
-  overflow:visible;
+  min-height:0;
 }
 .bj-table-tilt{
   flex:1;display:flex;flex-direction:column;
@@ -647,18 +646,20 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 .bj-table-surface{
   flex:1;
   position:relative;
-  /* 上方椭圆弧：用border-radius营造弧形顶边 */
-  border-radius:60% 60% 0 0 / 18% 18% 0 0;
-  padding:18px 32px 24px;
+  border-radius:50% 50% 0 0 / 8% 8% 0 0;
+  padding:16px 28px 20px;
+  display:flex;flex-direction:column;
   background:
-    radial-gradient(ellipse 90% 70% at 50% 30%,#1e5030 0%,#163a22 40%,#0d2418 70%,#071510 100%);
+    radial-gradient(ellipse 80% 60% at 50% 40%,#1e5030 0%,#163a22 35%,#0d2418 65%,#071510 100%);
   box-shadow:
-    0 -1px 0 0 #1a0c03,
-    0 -2px 0 0 #7a6340,
-    0 -4px 0 0 #0f0700,
-    0 -5px 0 0 rgba(200,169,110,.18),
-    inset 0 6px 30px rgba(0,0,0,.4),
-    inset 0 0 60px rgba(0,0,0,.25);
+    0 0 0 1px #1a0c03,
+    0 0 0 2.5px #7a6340,
+    0 0 0 4px #0f0700,
+    0 0 0 5.5px rgba(200,169,110,.15),
+    0 8px 50px rgba(0,0,0,.9),
+    inset 0 8px 30px rgba(0,0,0,.5),
+    inset 0 0 60px rgba(0,0,0,.3);
+  overflow:hidden;
 }
 /* 毡布纹理 */
 .bj-table-surface::before{
@@ -675,27 +676,47 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 
 /* 桌沿厚度 */
 .bj-table-edge{
-  height:20px;
+  height:24px;
   background:linear-gradient(180deg,#2e1a06 0%,#1a0e03 50%,#110901 100%);
-  border-radius:0 0 60% 60% / 0 0 100% 100%;
+  border-radius:0 0 120px 120px / 0 0 20px 20px;
   box-shadow:
     0 0 0 1px #7a6340,
-    0 8px 30px rgba(0,0,0,.95),
+    0 12px 40px rgba(0,0,0,.98),
     inset 0 1px 0 rgba(200,169,110,.1);
-  position:relative;
+  position:relative;margin-top:-2px;
 }
 .bj-table-edge::before{
   content:'';position:absolute;
   top:0;left:20%;right:20%;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(200,169,110,.28),transparent);
+  background:linear-gradient(90deg,transparent,rgba(200,169,110,.25),transparent);
 }
 
-
+/* ── 烛台装饰 ── */
+.bj-candle{
+  position:absolute;z-index:4;
+  display:flex;flex-direction:column;align-items:center;
+  pointer-events:none;
+}
+.bj-candle-l{left:18px;top:16px;}
+.bj-candle-r{right:18px;top:16px;}
+.bj-flame{
+  width:7px;height:12px;
+  background:radial-gradient(ellipse at 50% 80%,#fff8c0,#ffb020,transparent);
+  border-radius:50% 50% 35% 35%;filter:blur(.4px);
+  animation:bjFlame 1.8s ease-in-out infinite alternate;
+}
+@keyframes bjFlame{
+  0%  {transform:scaleX(1) rotate(-2deg);opacity:.9;}
+  50% {transform:scaleX(.8) scaleY(1.12) rotate(1deg);opacity:1;}
+  100%{transform:scaleX(1.1) scaleY(.92) rotate(-1deg);opacity:.85;}
+}
+.bj-cbody{width:9px;height:28px;background:linear-gradient(90deg,#ddd0b0,#f0e4c8,#ccc0a0);border-radius:2px 2px 0 0;}
+.bj-cbase{width:14px;height:3px;background:#7a6340;border-radius:2px;}
 
 /* ── 桌面区域 ── */
 .bj-dealer-zone{
-  display:flex;flex-direction:column;align-items:center;gap:6px;
-  padding-bottom:10px;position:relative;z-index:2;
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding-bottom:6px;position:relative;z-index:2;
 }
 .bj-felt-sep{
   height:1px;
@@ -704,11 +725,11 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 }
 .bj-felt-mid{
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 16px;position:relative;z-index:2;
+  padding:5px 16px;position:relative;z-index:2;
 }
 .bj-player-zone{
-  display:flex;flex-direction:column;align-items:center;gap:7px;
-  padding-top:8px;position:relative;z-index:2;
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding-top:6px;position:relative;z-index:2;
 }
 
 /* ── 共用桌面元素 ── */
@@ -719,7 +740,7 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
 .bj-score{color:#fff;font-size:.95rem;font-weight:700;}
 .bj-hand{
   display:flex;flex-wrap:wrap;gap:5px;
-  justify-content:center;min-height:66px;align-items:flex-end;
+  justify-content:center;min-height:56px;align-items:flex-end;
 }
 .bj-deck-area{display:flex;flex-direction:column;align-items:center;gap:3px;}
 .bj-deck{position:relative;width:34px;height:48px;}
