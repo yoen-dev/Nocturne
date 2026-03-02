@@ -508,11 +508,9 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
   align-items:stretch;
   max-width:920px;margin:0 auto;
 }
-/* chat-wrap 在flex中自动居中撑满 */
 .chat-outer .chat-wrap{
   flex:1;
-  max-width:760px;
-  margin:0 auto;
+  min-width:0;
 }
 .game-side{
   display:flex;flex-direction:column;
@@ -520,9 +518,9 @@ button{cursor:pointer;font-family:inherit;border:none;background:none;}
   gap:8px;cursor:pointer;
   border:1px solid rgba(255,255,255,.05);
   background:#0a0a0a;padding:16px 4px;
+  width:72px;flex-shrink:0;
   transition:background .25s,border-color .25s;
-  user-select:none;
-  overflow:hidden;
+  user-select:none;overflow:hidden;
 }
 .game-side:hover{background:#111;border-color:rgba(255,255,255,.15);}
 .game-side-left{border-right:none;}
