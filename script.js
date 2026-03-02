@@ -1068,9 +1068,10 @@ function bjSettle() {
 
 function updateGameBtns(){
   const b0=document.getElementById('game-btn-0'), b1=document.getElementById('game-btn-1');
-  if(!curWorld)return;
-  if(b0)b0.style.display=curWorld.chars?.[0]?'flex':'none';
-  if(b1)b1.style.display=curWorld.chars?.[1]?'flex':'none';
+  // 21点游戏只在夜曲（w1）显示
+  const show = curWorld?.id === 'w1';
+  if(b0)b0.style.display=(show && curWorld.chars?.[0])?'flex':'none';
+  if(b1)b1.style.display=(show && curWorld.chars?.[1])?'flex':'none';
 }
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
